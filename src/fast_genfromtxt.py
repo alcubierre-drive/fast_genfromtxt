@@ -871,24 +871,46 @@ _libs["fast_genfromtxt"] = load_library("fast_genfromtxt")
 # /home/lennart/fast_genfromtxt.h: 3
 if _libs["fast_genfromtxt"].has("fast_genfromtxt_prepare", "cdecl"):
     fast_genfromtxt_prepare = _libs["fast_genfromtxt"].get("fast_genfromtxt_prepare", "cdecl")
-    fast_genfromtxt_prepare.argtypes = [String, POINTER(c_int), POINTER(c_int)]
-    fast_genfromtxt_prepare.restype = None
+    fast_genfromtxt_prepare.argtypes = [String, POINTER(c_int64), POINTER(c_int64)]
+    fast_genfromtxt_prepare.restype = c_voidp
 
 # /home/lennart/fast_genfromtxt.h: 4
 if _libs["fast_genfromtxt"].has("fast_genfromtxt", "cdecl"):
     fast_genfromtxt = _libs["fast_genfromtxt"].get("fast_genfromtxt", "cdecl")
-    fast_genfromtxt.argtypes = [String, c_voidp]
+    fast_genfromtxt.argtypes = [c_voidp, c_voidp]
     fast_genfromtxt.restype = None
 
+# /home/lennart/fast_genfromtxt.h: 4
+if _libs["fast_genfromtxt"].has("fast_savetxt", "cdecl"):
+    fast_savetxt = _libs["fast_genfromtxt"].get("fast_savetxt", "cdecl")
+    fast_savetxt.argtypes = [String, c_voidp, c_int64, c_int64, String]
+    fast_savetxt.restype = None
+
 def genfromtxt( fname ):
-    nrow = c_int(0)
-    ncol = c_int(0)
-    fast_genfromtxt_prepare( fname, byref(nrow), byref(ncol) )
-    if nrow == -1 or ncol == -1:
+    nrow = c_int64(0)
+    ncol = c_int64(0)
+    handle = fast_genfromtxt_prepare( fname, byref(nrow), byref(ncol) )
+    if nrow == -1 or ncol == -1 or handle is None:
         return None
     data = np.zeros( (nrow.value, ncol.value), dtype=np.float64 )
-    fast_genfromtxt( fname, data.ctypes.data )
+    fast_genfromtxt( handle, data.ctypes.data )
     return data
+
+def savetxt( fname, data, header=None ):
+    fast_savetxt( fname, data.ctypes.data, data.shape[0], data.shape[1], header )
+
+if __name__ == '__main__':
+    shape = (12*1024, 1024)
+    data = np.random.rand( *shape )
+    print( "pysave..." )
+    np.savetxt( 'tmpdata.dat', data )
+    print( "save..." )
+    savetxt( 'tmpdata.dat', data )
+    print( "gen..." )
+    data_g = genfromtxt( 'tmpdata.dat' )
+    print( "pygen..." )
+    data_p = np.genfromtxt( 'tmpdata.dat' )
+    print( "done:", np.abs(data_g - data_p).sum(), np.abs(data_g).sum() )
 
 # No inserted files
 
