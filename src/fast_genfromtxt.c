@@ -40,7 +40,7 @@ void* fast_genfromtxt_prepare( const char* fname, int64_t* nrow, int64_t* ncol )
             const char* prev = p;
             p += strcspn( p, separator );
             int64_t width = p - prev;
-            if (width) {
+            if (width > 0) {
                 n_found++;
             }
         }
@@ -61,14 +61,13 @@ void fast_genfromtxt( void* ptr, double* data ) {
     while ((nread = genfromtxt_getline(line, f)) != -1) {
         if (iscomment(line)) continue;
         const char* separator = "\t ";
-        char buf[GENFROMTXT_GETLINE_MAX] = {0};
         for (const char* p = line; *p; ) {
             p += strspn( p, separator );
             const char* prev = p;
             p += strcspn( p, separator );
             int64_t width = p - prev;
-            if (width) {
-                memcpy( buf, prev, width ); buf[width] = 0;
+            if (width > 0) {
+                char buf[width+1]; strncpy( buf, prev, width ); buf[width] = 0;
                 data[idx++] = atof(buf);
             }
         }
