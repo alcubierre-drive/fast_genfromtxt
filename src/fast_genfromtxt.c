@@ -21,6 +21,12 @@ static int iscomment( const char* line ) {
     else return 0;
 }
 
+static void chomp( char* line ) {
+    int64_t len = strlen(line);
+    if ((len > 0) && ((line[len-1] == '\n') || (line[len-1] == '\t') || (line[len-1] == ' ')))
+        line[len-1] = '\0';
+}
+
 #define MAX(x,y) ((x) > (y) ? (x) : (y))
 
 void* fast_genfromtxt_prepare( const char* fname, int64_t* nrow, int64_t* ncol ) {
@@ -32,6 +38,7 @@ void* fast_genfromtxt_prepare( const char* fname, int64_t* nrow, int64_t* ncol )
     char line[GENFROMTXT_GETLINE_MAX] = {0};
     while ((nread = genfromtxt_getline(line, f)) != -1) {
         if (iscomment(line)) continue;
+        chomp(line);
         linenum++;
         const char* separator = "\t ";
         int64_t n_found = 0;
@@ -60,6 +67,7 @@ void fast_genfromtxt( void* ptr, double* data ) {
     char line[GENFROMTXT_GETLINE_MAX] = {0};
     while ((nread = genfromtxt_getline(line, f)) != -1) {
         if (iscomment(line)) continue;
+        chomp(line);
         const char* separator = "\t ";
         for (const char* p = line; *p; ) {
             p += strspn( p, separator );
