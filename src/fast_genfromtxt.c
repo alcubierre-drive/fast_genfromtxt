@@ -83,6 +83,71 @@ void fast_genfromtxt( void* ptr, double* data ) {
     fclose(f);
 }
 
+void* fast_cachefromtxt_prepare( const char* fname, int64_t* nrow, int64_t* ncol ) {
+    FILE* f = fopen(fname, "r");
+    if (!f) { *nrow = -1, *ncol = -1; return NULL; }
+    fseek(f, 0, SEEK_END);
+    int64_t nbytes = ftell(f);
+    rewind(f);
+    void* bytes = calloc(nbytes, 1);
+    fread(bytes, 1, nbytes, f);
+    fclose(f);
+    f = tmpfile();
+    if (!f) { *nrow = -1, *ncol = -1; free(bytes); return NULL; }
+    fwrite(bytes, 1, nbytes, f);
+    free(bytes);
+    rewind(f);
+    int64_t nread = 0,
+            linenum = 0,
+            ncols = 0;
+    char line[GENFROMTXT_GETLINE_MAX] = {0};
+    while ((nread = genfromtxt_getline(line, f)) != -1) {
+        if (iscomment(line)) continue;
+        chomp(line);
+        linenum++;
+        const char* separator = "\t ";
+        int64_t n_found = 0;
+        for (const char* p = line; *p; ) {
+            p += strspn( p, separator );
+            const char* prev = p;
+            p += strcspn( p, separator );
+            int64_t width = p - prev;
+            if (width > 0) {
+                n_found++;
+            }
+        }
+        ncols = MAX(ncols, n_found);
+    }
+    *nrow = linenum;
+    *ncol = ncols;
+    rewind(f);
+    return f;
+}
+
+void fast_cachefromtxt( void* ptr, double* data ) {
+    FILE* f = ptr;
+    if (!f) { *data = DBL_MAX; return; }
+    int64_t nread = 0,
+            idx = 0;
+    char line[GENFROMTXT_GETLINE_MAX] = {0};
+    while ((nread = genfromtxt_getline(line, f)) != -1) {
+        if (iscomment(line)) continue;
+        chomp(line);
+        const char* separator = "\t ";
+        for (const char* p = line; *p; ) {
+            p += strspn( p, separator );
+            const char* prev = p;
+            p += strcspn( p, separator );
+            int64_t width = p - prev;
+            if (width > 0) {
+                char buf[width+1]; strncpy( buf, prev, width ); buf[width] = 0;
+                data[idx++] = atof(buf);
+            }
+        }
+    }
+    fclose(f);
+}
+
 void fast_savetxt( const char* fname, const double* data, int64_t nrow, int64_t ncol, const char* header ) {
     FILE* f = fopen(fname, "w");
     if (!f) return;

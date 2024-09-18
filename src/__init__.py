@@ -868,32 +868,40 @@ _libs["fast_genfromtxt"] = load_library("fast_genfromtxt")
 
 # No modules
 
-# /home/lennart/fast_genfromtxt.h: 3
 if _libs["fast_genfromtxt"].has("fast_genfromtxt_prepare", "cdecl"):
     fast_genfromtxt_prepare = _libs["fast_genfromtxt"].get("fast_genfromtxt_prepare", "cdecl")
     fast_genfromtxt_prepare.argtypes = [String, POINTER(c_int64), POINTER(c_int64)]
     fast_genfromtxt_prepare.restype = c_voidp
 
-# /home/lennart/fast_genfromtxt.h: 4
 if _libs["fast_genfromtxt"].has("fast_genfromtxt", "cdecl"):
     fast_genfromtxt = _libs["fast_genfromtxt"].get("fast_genfromtxt", "cdecl")
     fast_genfromtxt.argtypes = [c_voidp, c_voidp]
     fast_genfromtxt.restype = None
 
-# /home/lennart/fast_genfromtxt.h: 4
+if _libs["fast_genfromtxt"].has("fast_cachefromtxt_prepare", "cdecl"):
+    fast_cachefromtxt_prepare = _libs["fast_genfromtxt"].get("fast_cachefromtxt_prepare", "cdecl")
+    fast_cachefromtxt_prepare.argtypes = [String, POINTER(c_int64), POINTER(c_int64)]
+    fast_cachefromtxt_prepare.restype = c_voidp
+
+if _libs["fast_genfromtxt"].has("fast_cachefromtxt", "cdecl"):
+    fast_cachefromtxt = _libs["fast_genfromtxt"].get("fast_cachefromtxt", "cdecl")
+    fast_cachefromtxt.argtypes = [c_voidp, c_voidp]
+    fast_cachefromtxt.restype = None
+
 if _libs["fast_genfromtxt"].has("fast_savetxt", "cdecl"):
     fast_savetxt = _libs["fast_genfromtxt"].get("fast_savetxt", "cdecl")
     fast_savetxt.argtypes = [String, c_voidp, c_int64, c_int64, String]
     fast_savetxt.restype = None
 
-def genfromtxt( fname ):
+def genfromtxt( fname, cache=False ):
     nrow = c_int64(0)
     ncol = c_int64(0)
-    handle = fast_genfromtxt_prepare( fname, byref(nrow), byref(ncol) )
+    funs = (fast_cachefromtxt_prepare, fast_cachefromtxt) if cache else (fast_genfromtxt_prepare, fast_genfromtxt)
+    handle = funs[0]( fname, byref(nrow), byref(ncol) )
     if nrow == -1 or ncol == -1 or handle is None:
         return None
     data = np.zeros( (nrow.value, ncol.value), dtype=np.float64 )
-    fast_genfromtxt( handle, data.ctypes.data )
+    funs[1]( handle, data.ctypes.data )
     return data
 
 def savetxt( fname, data, header=None ):
