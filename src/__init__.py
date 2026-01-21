@@ -14,6 +14,7 @@ import ctypes
 import sys
 from ctypes import *  # noqa: F401, F403
 import numpy as np
+import weakref
 
 _int_types = (ctypes.c_int16, ctypes.c_int32)
 if hasattr(ctypes, "c_int64"):
@@ -878,31 +879,51 @@ if _libs["fast_genfromtxt"].has("fast_genfromtxt", "cdecl"):
     fast_genfromtxt.argtypes = [c_voidp, c_voidp]
     fast_genfromtxt.restype = None
 
-if _libs["fast_genfromtxt"].has("fast_cachefromtxt_prepare", "cdecl"):
-    fast_cachefromtxt_prepare = _libs["fast_genfromtxt"].get("fast_cachefromtxt_prepare", "cdecl")
-    fast_cachefromtxt_prepare.argtypes = [String, POINTER(c_int64), POINTER(c_int64)]
-    fast_cachefromtxt_prepare.restype = c_voidp
+if _libs["fast_genfromtxt"].has("fast_tmpfromtxt_prepare", "cdecl"):
+    fast_tmpfromtxt_prepare = _libs["fast_genfromtxt"].get("fast_tmpfromtxt_prepare", "cdecl")
+    fast_tmpfromtxt_prepare.argtypes = [String, POINTER(c_int64), POINTER(c_int64)]
+    fast_tmpfromtxt_prepare.restype = c_voidp
 
-if _libs["fast_genfromtxt"].has("fast_cachefromtxt", "cdecl"):
-    fast_cachefromtxt = _libs["fast_genfromtxt"].get("fast_cachefromtxt", "cdecl")
-    fast_cachefromtxt.argtypes = [c_voidp, c_voidp]
-    fast_cachefromtxt.restype = None
+if _libs["fast_genfromtxt"].has("fast_tmpfromtxt", "cdecl"):
+    fast_tmpfromtxt = _libs["fast_genfromtxt"].get("fast_tmpfromtxt", "cdecl")
+    fast_tmpfromtxt.argtypes = [c_voidp, c_voidp]
+    fast_tmpfromtxt.restype = None
 
 if _libs["fast_genfromtxt"].has("fast_savetxt", "cdecl"):
     fast_savetxt = _libs["fast_genfromtxt"].get("fast_savetxt", "cdecl")
     fast_savetxt.argtypes = [String, c_voidp, c_int64, c_int64, String]
     fast_savetxt.restype = None
 
-def genfromtxt( fname, cache=False ):
+if _libs["fast_genfromtxt"].has("fast_buffromtxt", "cdecl"):
+    fast_buffromtxt = _libs["fast_genfromtxt"].get("fast_buffromtxt", "cdecl")
+    fast_buffromtxt.argtypes = [String, POINTER(c_int64), POINTER(c_int64), c_int]
+    fast_buffromtxt.restype = c_voidp
+
+if _libs["fast_genfromtxt"].has("fast_buffromtxt_free", "cdecl"):
+    fast_buffromtxt_free = _libs["fast_genfromtxt"].get("fast_buffromtxt_free", "cdecl")
+    fast_buffromtxt_free.argtypes = [c_voidp]
+    fast_buffromtxt_free.restype = None
+else:
+    fast_buffromtxt_free = lambda x: None
+
+def genfromtxt( fname, cache=False, xcache=False, nthr=-1 ):
     nrow = c_int64(0)
     ncol = c_int64(0)
-    funs = (fast_cachefromtxt_prepare, fast_cachefromtxt) if cache else (fast_genfromtxt_prepare, fast_genfromtxt)
-    handle = funs[0]( fname, byref(nrow), byref(ncol) )
-    if nrow == -1 or ncol == -1 or handle is None:
-        return None
-    data = np.zeros( (nrow.value, ncol.value), dtype=np.float64 )
-    funs[1]( handle, data.ctypes.data )
-    return data
+    if not xcache:
+        funs = (fast_tmpfromtxt_prepare, fast_tmpfromtxt) if cache else (fast_genfromtxt_prepare, fast_genfromtxt)
+        handle = funs[0]( fname, byref(nrow), byref(ncol) )
+        if nrow == -1 or ncol == -1 or handle is None:
+            return None
+        data = np.zeros( (nrow.value, ncol.value), dtype=np.float64 )
+        funs[1]( handle, data.ctypes.data )
+        return data
+    else:
+        buf = fast_buffromtxt( fname, byref(nrow), byref(ncol), nthr )
+        shape = (nrow.value, ncol.value, np.float64().itemsize)
+        ary = np.ctypeslib.as_array( cast(buf, POINTER(c_char)), shape=shape ).view( \
+                dtype=np.float64 ).reshape( shape[:-1] )
+        weakref.finalize( ary, lambda buf: fast_buffromtxt_free(buf), buf )
+        return ary
 
 def savetxt( fname, data, header=None ):
     fast_savetxt( fname, data.ctypes.data, data.shape[0], data.shape[1], header )

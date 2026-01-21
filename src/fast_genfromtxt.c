@@ -83,7 +83,7 @@ void fast_genfromtxt( void* ptr, double* data ) {
     fclose(f);
 }
 
-void* fast_cachefromtxt_prepare( const char* fname, int64_t* nrow, int64_t* ncol ) {
+void* fast_tmpfromtxt_prepare( const char* fname, int64_t* nrow, int64_t* ncol ) {
     FILE* f = fopen(fname, "r");
     if (!f) { *nrow = -1, *ncol = -1; return NULL; }
     fseek(f, 0, SEEK_END);
@@ -124,7 +124,7 @@ void* fast_cachefromtxt_prepare( const char* fname, int64_t* nrow, int64_t* ncol
     return f;
 }
 
-void fast_cachefromtxt( void* ptr, double* data ) {
+void fast_tmpfromtxt( void* ptr, double* data ) {
     FILE* f = ptr;
     if (!f) { *data = DBL_MAX; return; }
     int64_t nread = 0,
