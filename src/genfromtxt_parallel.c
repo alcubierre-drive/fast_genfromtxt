@@ -1,4 +1,4 @@
-#include "fast_genfromtxt.h"
+#include "genfromtxt_parallel.h"
 #include "vector.h"
 
 #include <stdlib.h>
@@ -287,6 +287,10 @@ column_t get_column( char* restrict buffer, int64_t offset, int64_t size, char* 
     return result;
 }
 
+#ifdef USE_DOUBLE_CONVERSION
+#include "double_conversion_wrap.h"
+#endif
+
 double* genfromtxt_mmap( const char* fname, int64_t* nrow, int64_t* ncol, int nthr ) {
     if (nthr <= 0) nthr = omp_get_max_threads();
 
@@ -298,6 +302,8 @@ double* genfromtxt_mmap( const char* fname, int64_t* nrow, int64_t* ncol, int nt
     int64_t nbytes = 0;
     int64_t* count = NULL;
     vec_double_t* results = NULL;
+    VECTOR_DECL( double, result );
+    result = NULL; result_sz = result_cap = 0;
 
     if (fd <= 0) goto mclean;
 
@@ -327,13 +333,14 @@ double* genfromtxt_mmap( const char* fname, int64_t* nrow, int64_t* ncol, int nt
     // update counts
     for (int t=0; t<nthr; ++t) count[t] = (t==(nthr-1) ? nbytes : displ[t+1]) - displ[t];
 
-    VECTOR_DECL( double, result );
-    result = NULL; result_sz = result_cap = 0;
     results = calloc( nthr, sizeof*results );
     int64_t nrow_found = 0;
     // get the data on each thread
     #pragma omp parallel num_threads(nthr)
     {
+        #ifdef USE_DOUBLE_CONVERSION
+        void* dchandle = dcwrap_init();
+        #endif
         int t = omp_get_thread_num();
         char* buf = bytes + displ[t];
         int64_t offset = 0;
@@ -353,15 +360,20 @@ double* genfromtxt_mmap( const char* fname, int64_t* nrow, int64_t* ncol, int nt
                     my_ncol = 0;
                     my_nrow++;
                 }
-                double dnum = 0;
-                int nread = sscanf( num, "%le", &dnum );
-                if (nread != 1)
-                    fprintf( stderr, "could not read number at offset %li\n", offset );
+                #ifdef USE_DOUBLE_CONVERSION
+                double dnum = dcwrap_run( dchandle, num, sizeof num );
+                #else
+                double dnum = atof(num);
+                #endif
                 VECTOR_PUSH_BACK( results[t].v, dnum );
             }
             offset = col.offset;
         }
         if (t != 0) VECTOR_SHRINK_TO_FIT( results[t].v );
+
+        #ifdef USE_DOUBLE_CONVERSION
+        dcwrap_free(dchandle);
+        #endif
 
         my_ncol = my_ncol_max + 1;
         if (my_ncol_min != my_ncol_max) {
@@ -393,37 +405,11 @@ double* genfromtxt_mmap( const char* fname, int64_t* nrow, int64_t* ncol, int nt
     *nrow = nrow_found;
     *ncol = result_sz / nrow_found;
 mclean:
-    munmap(bytes, nbytes);
+    if (bytes) munmap(bytes, nbytes);
     free(count);
     free(results);
     return result; // should be NULL on error
 }
-
-/*
-#include <time.h>
-static inline double wtime( void ) {
-    struct timespec ts;
-    timespec_get(&ts, TIME_UTC);
-    return (double)ts.tv_sec + (double)ts.tv_nsec / 1.e+9;
-}
-int main() {
-    int64_t nrow, ncol;
-    double* ary;
-    double tick, tock;
-
-    tick = wtime();
-    ary = genfromtxt_buffered( "RAND.dat", &nrow, &ncol, -1 );
-    free( ary );
-    tock = wtime();
-    printf( "buf: %.2f (%li×%li)\n", tock-tick, nrow, ncol );
-
-    tick = wtime();
-    ary = genfromtxt_mmap( "RAND.dat", &nrow, &ncol, -1 );
-    free( ary );
-    tock = wtime();
-    printf( "map: %.2f (%li×%li)\n", tock-tick, nrow, ncol );
-}
-*/
 
 void savetxt_buffered( const char* fname, const double* data, int64_t nrow,
                        int64_t ncol, const char* header, int nthr ) {
@@ -458,4 +444,28 @@ void savetxt_buffered( const char* fname, const double* data, int64_t nrow,
     fwrite(buf, 20, nrow*ncol, f);
     free(buf);
     fclose(f);
+}
+
+#include <time.h>
+static inline double wtime( void ) {
+    struct timespec ts;
+    timespec_get(&ts, TIME_UTC);
+    return (double)ts.tv_sec + (double)ts.tv_nsec / 1.e+9;
+}
+int main() {
+    int64_t nrow, ncol;
+    double* ary;
+    double tick, tock;
+
+    tick = wtime();
+    ary = genfromtxt_buffered( "RAND.dat", &nrow, &ncol, -1 );
+    free( ary );
+    tock = wtime();
+    printf( "buf: %.2f (%li×%li)\n", tock-tick, nrow, ncol );
+
+    tick = wtime();
+    ary = genfromtxt_mmap( "RAND.dat", &nrow, &ncol, -1 );
+    free( ary );
+    tock = wtime();
+    printf( "map: %.2f (%li×%li)\n", tock-tick, nrow, ncol );
 }
