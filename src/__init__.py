@@ -869,48 +869,51 @@ _libs["fast_genfromtxt"] = load_library("fast_genfromtxt")
 
 # No modules
 
-if _libs["fast_genfromtxt"].has("fast_genfromtxt_prepare", "cdecl"):
-    fast_genfromtxt_prepare = _libs["fast_genfromtxt"].get("fast_genfromtxt_prepare", "cdecl")
-    fast_genfromtxt_prepare.argtypes = [String, POINTER(c_int64), POINTER(c_int64)]
-    fast_genfromtxt_prepare.restype = c_voidp
+if _libs["fast_genfromtxt"].has("genfromtxt_serial_prepare", "cdecl"):
+    genfromtxt_serial_prepare = _libs["fast_genfromtxt"].get("genfromtxt_serial_prepare", "cdecl")
+    genfromtxt_serial_prepare.argtypes = [String, POINTER(c_int64), POINTER(c_int64)]
+    genfromtxt_serial_prepare.restype = c_voidp
 
-if _libs["fast_genfromtxt"].has("fast_genfromtxt", "cdecl"):
-    fast_genfromtxt = _libs["fast_genfromtxt"].get("fast_genfromtxt", "cdecl")
-    fast_genfromtxt.argtypes = [c_voidp, c_voidp]
-    fast_genfromtxt.restype = None
+if _libs["fast_genfromtxt"].has("genfromtxt_serial", "cdecl"):
+    genfromtxt_serial = _libs["fast_genfromtxt"].get("genfromtxt_serial", "cdecl")
+    genfromtxt_serial.argtypes = [c_voidp, c_voidp]
+    genfromtxt_serial.restype = None
 
-if _libs["fast_genfromtxt"].has("fast_tmpfromtxt_prepare", "cdecl"):
-    fast_tmpfromtxt_prepare = _libs["fast_genfromtxt"].get("fast_tmpfromtxt_prepare", "cdecl")
-    fast_tmpfromtxt_prepare.argtypes = [String, POINTER(c_int64), POINTER(c_int64)]
-    fast_tmpfromtxt_prepare.restype = c_voidp
+if _libs["fast_genfromtxt"].has("genfromtxt_tmpfile_serial_prepare", "cdecl"):
+    genfromtxt_tmpfile_serial_prepare = _libs["fast_genfromtxt"].get("genfromtxt_tmpfile_serial_prepare", "cdecl")
+    genfromtxt_tmpfile_serial_prepare.argtypes = [String, POINTER(c_int64), POINTER(c_int64)]
+    genfromtxt_tmpfile_serial_prepare.restype = c_voidp
 
-if _libs["fast_genfromtxt"].has("fast_tmpfromtxt", "cdecl"):
-    fast_tmpfromtxt = _libs["fast_genfromtxt"].get("fast_tmpfromtxt", "cdecl")
-    fast_tmpfromtxt.argtypes = [c_voidp, c_voidp]
-    fast_tmpfromtxt.restype = None
+if _libs["fast_genfromtxt"].has("genfromtxt_tmpfile_serial", "cdecl"):
+    genfromtxt_tmpfile_serial = _libs["fast_genfromtxt"].get("genfromtxt_tmpfile_serial", "cdecl")
+    genfromtxt_tmpfile_serial.argtypes = [c_voidp, c_voidp]
+    genfromtxt_tmpfile_serial.restype = None
 
-if _libs["fast_genfromtxt"].has("fast_savetxt", "cdecl"):
-    fast_savetxt = _libs["fast_genfromtxt"].get("fast_savetxt", "cdecl")
-    fast_savetxt.argtypes = [String, c_voidp, c_int64, c_int64, String]
-    fast_savetxt.restype = None
+if _libs["fast_genfromtxt"].has("savetxt_serial", "cdecl"):
+    savetxt_serial = _libs["fast_genfromtxt"].get("savetxt_serial", "cdecl")
+    savetxt_serial.argtypes = [String, c_voidp, c_int64, c_int64, String]
+    savetxt_serial.restype = None
 
-if _libs["fast_genfromtxt"].has("fast_buffromtxt", "cdecl"):
-    fast_buffromtxt = _libs["fast_genfromtxt"].get("fast_buffromtxt", "cdecl")
-    fast_buffromtxt.argtypes = [String, POINTER(c_int64), POINTER(c_int64), c_int]
-    fast_buffromtxt.restype = c_voidp
+if _libs["fast_genfromtxt"].has("genfromtxt_buffered", "cdecl"):
+    genfromtxt_buffered = _libs["fast_genfromtxt"].get("genfromtxt_buffered", "cdecl")
+    genfromtxt_buffered.argtypes = [String, POINTER(c_int64), POINTER(c_int64), c_int]
+    genfromtxt_buffered.restype = c_voidp
 
-if _libs["fast_genfromtxt"].has("fast_buffromtxt_free", "cdecl"):
-    fast_buffromtxt_free = _libs["fast_genfromtxt"].get("fast_buffromtxt_free", "cdecl")
-    fast_buffromtxt_free.argtypes = [c_voidp]
-    fast_buffromtxt_free.restype = None
-else:
-    fast_buffromtxt_free = lambda x: None
+if _libs["fast_genfromtxt"].has("genfromtxt_buffered_free", "cdecl"):
+    genfromtxt_buffered_free = _libs["fast_genfromtxt"].get("genfromtxt_buffered_free", "cdecl")
+    genfromtxt_buffered_free.argtypes = [c_voidp]
+    genfromtxt_buffered_free.restype = None
+
+if _libs["fast_genfromtxt"].has("savetxt_buffered", "cdecl"):
+    savetxt_buffered = _libs["fast_genfromtxt"].get("savetxt_buffered", "cdecl")
+    savetxt_buffered.argtypes = [String, c_voidp, c_int64, c_int64, String, c_int]
+    savetxt_buffered.restype = None
 
 def genfromtxt( fname, cache=False, xcache=False, nthr=-1 ):
     nrow = c_int64(0)
     ncol = c_int64(0)
     if not xcache:
-        funs = (fast_tmpfromtxt_prepare, fast_tmpfromtxt) if cache else (fast_genfromtxt_prepare, fast_genfromtxt)
+        funs = (genfromtxt_tmpfile_serial_prepare, genfromtxt_tmpfile_serial) if cache else (genfromtxt_serial_prepare, genfromtxt_serial)
         handle = funs[0]( fname, byref(nrow), byref(ncol) )
         if nrow == -1 or ncol == -1 or handle is None:
             return None
@@ -918,15 +921,18 @@ def genfromtxt( fname, cache=False, xcache=False, nthr=-1 ):
         funs[1]( handle, data.ctypes.data )
         return data
     else:
-        buf = fast_buffromtxt( fname, byref(nrow), byref(ncol), nthr )
+        buf = genfromtxt_buffered( fname, byref(nrow), byref(ncol), nthr )
         shape = (nrow.value, ncol.value, np.float64().itemsize)
         ary = np.ctypeslib.as_array( cast(buf, POINTER(c_char)), shape=shape ).view( \
                 dtype=np.float64 ).reshape( shape[:-1] )
-        weakref.finalize( ary, lambda buf: fast_buffromtxt_free(buf), buf )
+        weakref.finalize( ary, lambda buf: genfromtxt_buffered_free(buf), buf )
         return ary
 
-def savetxt( fname, data, header=None ):
-    fast_savetxt( fname, data.ctypes.data, data.shape[0], data.shape[1], header )
+def savetxt( fname, data, header=None, cache=False, nthr=-1 ):
+    if cache:
+        savetxt_buffered(fname, data.ctypes.data, data.shape[0], data.shape[1], header, nthr)
+    else:
+        savetxt_serial(fname, data.ctypes.data, data.shape[0], data.shape[1], header)
 
 if __name__ == '__main__':
     shape = (12*1024, 1024)

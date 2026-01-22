@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
    name='fast_genfromtxt',
-   version='v0.1.0',
+   version='v0.1.1',
    description='fast version of numpy\'s genfromtxt/savetxt for floats',
    long_description_content_type = 'text/markdown',
    packages=['fast_genfromtxt'],

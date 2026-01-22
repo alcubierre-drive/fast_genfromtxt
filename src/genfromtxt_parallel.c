@@ -10,7 +10,6 @@
 
 #include <unistd.h>
 #include <sys/stat.h>
-#include <sys/mman.h>
 #include <fcntl.h>
 
 #define MAX(A,B) ((A) > (B) ? (A) : (B))
@@ -29,7 +28,7 @@ typedef struct {
 
     int64_t* nrow;
     int64_t* ncol;
-} fast_buffromtxt_t;
+} genfromtxt_buffered_t;
 
 typedef struct {
     char* buf;
@@ -60,7 +59,7 @@ static inline virtual_getline_t virtual_getline( virtual_file_t* file ) {
     return result;
 }
 
-double* fast_buffromtxt( const char* fname, int64_t* nrow, int64_t* ncol, int nthr ) {
+double* genfromtxt_buffered( const char* fname, int64_t* nrow, int64_t* ncol, int nthr ) {
     // TODO
     // printf( "setup…\n" );
     if (nthr <= 0) nthr = omp_get_max_threads();
@@ -70,7 +69,7 @@ double* fast_buffromtxt( const char* fname, int64_t* nrow, int64_t* ncol, int nt
     VECTOR_DECL( double, result )
     result = NULL;
     result_sz = result_cap = 0;
-    fast_buffromtxt_t fb = {0};
+    genfromtxt_buffered_t fb = {0};
     fb.nthr = nthr;
 
     int fd = open(fname, O_RDONLY);
@@ -141,17 +140,14 @@ double* fast_buffromtxt( const char* fname, int64_t* nrow, int64_t* ncol, int nt
     #pragma omp parallel for num_threads(fb.nthr)
     for (int t=0; t<fb.nthr; ++t) {
         int64_t n_comment_lines_thr = 0;
-        int64_t count = fb.count[t];
-        // terminate the bytes appropriately (use extra byte allocated up top)
-        fb.bytes[fb.displ[t] + (t == fb.nthr-1) ? count : (count-1)] = '\0';
 
-        if (count) {
+        if (fb.count[t]) {
             int64_t ncols_max = INT64_MIN,
                     ncols_min = INT64_MAX;
             // this should be enough space
             VECTOR_RESERVE( fb.results[t].v, fb.nbytes / fb.nthr );
             virtual_file_t vfile = {.buf = fb.bytes + fb.displ[t],
-                                    .sz = count,
+                                    .sz = fb.count[t],
                                     .offset = 0};
             virtual_getline_t vline = {0};
             do {
@@ -221,7 +217,7 @@ double* fast_buffromtxt( const char* fname, int64_t* nrow, int64_t* ncol, int nt
     VECTOR_SHRINK_TO_FIT( result );
 
 cleanup:
-    munmap(fb.bytes, fb.nbytes);
+    free(fb.bytes);
     free(fb.displ);
     free(fb.count);
     free(fb.results);
@@ -230,7 +226,7 @@ cleanup:
     return result; // should be NULL on error
 }
 
-void fast_buffromtxt_free( void* ptr ) { free( ptr ); }
+void genfromtxt_buffered_free( void* ptr ) { free( ptr ); }
 
 /*
 #include <time.h>
@@ -245,7 +241,7 @@ int main() {
     double tick, tock;
 
     tick = wtime();
-    ary = fast_buffromtxt( "RAND.dat", &nrow, &ncol, -1 );
+    ary = genfromtxt_buffered( "RAND.dat", &nrow, &ncol, -1 );
     free( ary );
     tock = wtime();
     printf( "buf: %.2f (%li×%li)\n", tock-tick, nrow, ncol );
@@ -259,3 +255,42 @@ int main() {
     printf( "gen: %.2f (%li×%li)\n", tock-tick, nrow, ncol );
 }
 */
+
+void savetxt_buffered( const char* fname, const double* data, int64_t nrow,
+                       int64_t ncol, const char* header, int nthr ) {
+    if (nthr <= 0) nthr = omp_get_max_threads();
+
+    FILE* f = fopen(fname, "wb");
+    if (!f) return;
+
+    int64_t* count = calloc(2*nthr, sizeof*count);
+    for (int t=0; t<nthr; ++t) count[t] = nrow/nthr;
+    for (int t=0; t<nrow%nthr; ++t) count[t]++;
+
+    int64_t* displ = count + nthr;
+    for (int t=1; t<nthr; ++t) displ[t] = displ[t-1] + count[t-1];
+
+    int64_t bufsz = 20 * nrow * ncol;
+    char* buf = malloc( bufsz+1 );
+    if (!buf) { free(count); fclose(f); return; }
+
+    #pragma omp parallel for num_threads(nthr)
+    for (int t=0; t<nthr; ++t) {
+        for (int64_t i=0; i<count[t]; ++i) {
+            int64_t r = displ[t]+i;
+            char* colbuf = buf + 20*r*ncol;
+            for (int64_t c=0; c<ncol; ++c) {
+                char tmp[32] = {0};
+                sprintf( tmp, "%19.12e ", data[r*ncol+c] );
+                memcpy( colbuf, tmp, 20 );
+                colbuf += 20;
+            }
+            colbuf[-1] = '\n';
+        }
+    }
+    free(count);
+    if (header) fprintf(f, "%s\n", header);
+    fwrite(buf, 20, nrow*ncol, f);
+    free(buf);
+    fclose(f);
+}

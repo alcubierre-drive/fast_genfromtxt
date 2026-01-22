@@ -1,4 +1,4 @@
-#include "fast_genfromtxt.h"
+#include "genfromtxt_serial.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,7 +29,7 @@ static void chomp( char* line ) {
 
 #define MAX(x,y) ((x) > (y) ? (x) : (y))
 
-void* fast_genfromtxt_prepare( const char* fname, int64_t* nrow, int64_t* ncol ) {
+void* genfromtxt_serial_prepare( const char* fname, int64_t* nrow, int64_t* ncol ) {
     FILE* f = fopen(fname, "r");
     if (!f) { *nrow = -1, *ncol = -1; return NULL; }
     int64_t nread = 0,
@@ -59,7 +59,7 @@ void* fast_genfromtxt_prepare( const char* fname, int64_t* nrow, int64_t* ncol )
     return f;
 }
 
-void fast_genfromtxt( void* ptr, double* data ) {
+void genfromtxt_serial( void* ptr, double* data ) {
     FILE* f = ptr;
     if (!f) { *data = DBL_MAX; return; }
     int64_t nread = 0,
@@ -83,7 +83,7 @@ void fast_genfromtxt( void* ptr, double* data ) {
     fclose(f);
 }
 
-void* fast_tmpfromtxt_prepare( const char* fname, int64_t* nrow, int64_t* ncol ) {
+void* genfromtxt_tmpfile_serial_prepare( const char* fname, int64_t* nrow, int64_t* ncol ) {
     FILE* f = fopen(fname, "r");
     if (!f) { *nrow = -1, *ncol = -1; return NULL; }
     fseek(f, 0, SEEK_END);
@@ -124,7 +124,7 @@ void* fast_tmpfromtxt_prepare( const char* fname, int64_t* nrow, int64_t* ncol )
     return f;
 }
 
-void fast_tmpfromtxt( void* ptr, double* data ) {
+void genfromtxt_tmpfile_serial( void* ptr, double* data ) {
     FILE* f = ptr;
     if (!f) { *data = DBL_MAX; return; }
     int64_t nread = 0,
@@ -148,7 +148,7 @@ void fast_tmpfromtxt( void* ptr, double* data ) {
     fclose(f);
 }
 
-void fast_savetxt( const char* fname, const double* data, int64_t nrow, int64_t ncol, const char* header ) {
+void savetxt_serial( const char* fname, const double* data, int64_t nrow, int64_t ncol, const char* header ) {
     FILE* f = fopen(fname, "w");
     if (!f) return;
 
