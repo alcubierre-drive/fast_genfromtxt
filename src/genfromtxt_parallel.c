@@ -6,14 +6,28 @@
 #include <float.h>
 #include <string.h>
 #include <ctype.h>
+#include <assert.h>
+
 #include <omp.h>
 
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include <fcntl.h>
 
 #define MAX(A,B) ((A) > (B) ? (A) : (B))
 #define MIN(A,B) ((A) < (B) ? (A) : (B))
+
+static inline int64_t* count_displ( int64_t num, int64_t par ) {
+    int64_t* count = calloc(2*par, sizeof*count);
+    int64_t* displ = count + par;
+
+    for (int64_t p=0; p<par; ++p) count[p] = num/par;
+    for (int64_t p=0; p<num%par; ++p) count[p]++;
+
+    for (int64_t p=1; p<par; ++p) displ[p] = displ[p-1]+count[p-1];
+    return count;
+}
 
 typedef struct { VECTOR_DECL( double, v ) } vec_double_t;
 
@@ -228,6 +242,163 @@ cleanup:
 
 void genfromtxt_buffered_free( void* ptr ) { free( ptr ); }
 
+typedef struct {
+    int64_t offset;
+    int line_continues;
+    int buffer_continues;
+    int is_comment;
+    int has_number;
+} column_t;
+
+column_t get_column( char* restrict buffer, int64_t offset, int64_t size, char* restrict number ) {
+    column_t result = {.offset=offset, .line_continues=1, .buffer_continues=1,
+                       .is_comment=0, .has_number=0};
+
+    while (isspace(buffer[result.offset]) && result.offset < size)
+        result.offset++;
+
+    int nnumber = 0;
+    while (!isspace(buffer[result.offset]) && result.offset < size) {
+        if (number[nnumber] == '#') {
+            nnumber++;
+            result.is_comment = 1;
+            break;
+        } else {
+            number[nnumber++] = buffer[result.offset++];
+        }
+    }
+    result.has_number = (nnumber > 0);
+    number[nnumber++] = '\0';
+    assert( nnumber < 64 );
+
+    if (result.is_comment) {
+        while (buffer[result.offset] != '\n' && result.offset < size)
+            result.offset++;
+    } else {
+        while (isspace(buffer[result.offset]) && result.offset < size) {
+            if (buffer[result.offset++] == '\n') {
+                result.line_continues = 0;
+                break;
+            }
+        }
+    }
+    result.buffer_continues = (result.offset < size);
+
+    return result;
+}
+
+double* genfromtxt_mmap( const char* fname, int64_t* nrow, int64_t* ncol, int nthr ) {
+    if (nthr <= 0) nthr = omp_get_max_threads();
+
+    // have this here to return it on error
+    *nrow = *ncol = -1;
+
+    int fd = open(fname, O_RDONLY);
+    char* bytes = NULL;
+    int64_t nbytes = 0;
+    int64_t* count = NULL;
+    vec_double_t* results = NULL;
+
+    if (fd <= 0) goto mclean;
+
+    struct stat finfo = {0};
+    fstat(fd, &finfo);
+    nbytes = finfo.st_size;
+    if ((bytes = mmap(NULL, nbytes, PROT_READ, MAP_PRIVATE, fd, 0)) == MAP_FAILED) {
+        close(fd);
+        goto mclean;
+    }
+    close(fd);
+
+    count = count_displ(nbytes, nthr);
+    int64_t* displ = count+nthr;
+
+    // find closest (to left) newline and update corresponding displacement
+    #pragma omp parallel for num_threads(nthr)
+    for (int t=0; t<nthr; ++t) {
+        while (displ[t] > 0) {
+            if (bytes[--displ[t]] == '\n') {
+                displ[t]++;
+                break;
+            }
+        }
+    }
+
+    // update counts
+    for (int t=0; t<nthr; ++t) count[t] = (t==(nthr-1) ? nbytes : displ[t+1]) - displ[t];
+
+    VECTOR_DECL( double, result );
+    result = NULL; result_sz = result_cap = 0;
+    results = calloc( nthr, sizeof*results );
+    int64_t nrow_found = 0;
+    // get the data on each thread
+    #pragma omp parallel num_threads(nthr)
+    {
+        int t = omp_get_thread_num();
+        char* buf = bytes + displ[t];
+        int64_t offset = 0;
+        column_t col = {.buffer_continues=1};
+        char num[64] = {0};
+        VECTOR_RESERVE( results[t].v, nbytes/nthr/8 );
+
+        int64_t my_ncol = 0, my_nrow = 0, my_ncol_min = INT64_MAX, my_ncol_max = INT64_MIN;
+        while (col.buffer_continues) {
+            col = get_column(buf, offset, count[t], num);
+            if (!col.is_comment && col.has_number) {
+                if (col.line_continues) {
+                    my_ncol++;
+                } else {
+                    my_ncol_max = MAX(my_ncol_max,my_ncol);
+                    my_ncol_min = MIN(my_ncol_min,my_ncol);
+                    my_ncol = 0;
+                    my_nrow++;
+                }
+                double dnum = 0;
+                int nread = sscanf( num, "%le", &dnum );
+                if (nread != 1)
+                    fprintf( stderr, "could not read number at offset %li\n", offset );
+                VECTOR_PUSH_BACK( results[t].v, dnum );
+            }
+            offset = col.offset;
+        }
+        if (t != 0) VECTOR_SHRINK_TO_FIT( results[t].v );
+
+        my_ncol = my_ncol_max + 1;
+        if (my_ncol_min != my_ncol_max) {
+            VECTOR_RESIZE( results[t].v, 0 );
+            fprintf( stderr, "error (thr#%i): #cols=%li..%li. skipping %li rows.\n",
+                         t, my_ncol_min, my_ncol_max, my_nrow );
+            my_nrow = 0;
+        }
+
+        // here the output begins
+        #pragma omp atomic
+        nrow_found += my_nrow;
+
+        #pragma omp barrier
+        {}
+        #pragma omp single
+        {
+            VECTOR_COPY( result, results[0].v );
+            VECTOR_RESERVE( result, nrow_found*my_ncol );
+            for (int o=1; o<nthr; ++o) {
+                memcpy( result + result_sz, results[o].v, sizeof(double) * results[o].v_sz );
+                result_sz += results[o].v_sz;
+                VECTOR_FREE( results[o].v );
+            }
+        }
+    }
+
+    VECTOR_SHRINK_TO_FIT( result );
+    *nrow = nrow_found;
+    *ncol = result_sz / nrow_found;
+mclean:
+    munmap(bytes, nbytes);
+    free(count);
+    free(results);
+    return result; // should be NULL on error
+}
+
 /*
 #include <time.h>
 static inline double wtime( void ) {
@@ -247,12 +418,10 @@ int main() {
     printf( "buf: %.2f (%li×%li)\n", tock-tick, nrow, ncol );
 
     tick = wtime();
-    void* handle = fast_genfromtxt_prepare( "RAND.dat", &nrow, &ncol );
-    ary = malloc( sizeof*ary * nrow*ncol );
-    fast_genfromtxt( handle, ary );
+    ary = genfromtxt_mmap( "RAND.dat", &nrow, &ncol, -1 );
     free( ary );
     tock = wtime();
-    printf( "gen: %.2f (%li×%li)\n", tock-tick, nrow, ncol );
+    printf( "map: %.2f (%li×%li)\n", tock-tick, nrow, ncol );
 }
 */
 
@@ -263,12 +432,8 @@ void savetxt_buffered( const char* fname, const double* data, int64_t nrow,
     FILE* f = fopen(fname, "wb");
     if (!f) return;
 
-    int64_t* count = calloc(2*nthr, sizeof*count);
-    for (int t=0; t<nthr; ++t) count[t] = nrow/nthr;
-    for (int t=0; t<nrow%nthr; ++t) count[t]++;
-
+    int64_t* count = count_displ(nrow, nthr);
     int64_t* displ = count + nthr;
-    for (int t=1; t<nthr; ++t) displ[t] = displ[t-1] + count[t-1];
 
     int64_t bufsz = 20 * nrow * ncol;
     char* buf = malloc( bufsz+1 );

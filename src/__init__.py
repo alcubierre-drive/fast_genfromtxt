@@ -899,6 +899,11 @@ if _libs["fast_genfromtxt"].has("genfromtxt_buffered", "cdecl"):
     genfromtxt_buffered.argtypes = [String, POINTER(c_int64), POINTER(c_int64), c_int]
     genfromtxt_buffered.restype = c_voidp
 
+if _libs["fast_genfromtxt"].has("genfromtxt_mmap", "cdecl"):
+    genfromtxt_mmap = _libs["fast_genfromtxt"].get("genfromtxt_mmap", "cdecl")
+    genfromtxt_mmap.argtypes = [String, POINTER(c_int64), POINTER(c_int64), c_int]
+    genfromtxt_mmap.restype = c_voidp
+
 if _libs["fast_genfromtxt"].has("genfromtxt_buffered_free", "cdecl"):
     genfromtxt_buffered_free = _libs["fast_genfromtxt"].get("genfromtxt_buffered_free", "cdecl")
     genfromtxt_buffered_free.argtypes = [c_voidp]
@@ -909,26 +914,32 @@ if _libs["fast_genfromtxt"].has("savetxt_buffered", "cdecl"):
     savetxt_buffered.argtypes = [String, c_voidp, c_int64, c_int64, String, c_int]
     savetxt_buffered.restype = None
 
-def genfromtxt( fname, cache=False, xcache=False, nthr=-1 ):
+def genfromtxt( fname, mode='mmap', nthr=-1 ):
     nrow = c_int64(0)
     ncol = c_int64(0)
-    if not xcache:
-        funs = (genfromtxt_tmpfile_serial_prepare, genfromtxt_tmpfile_serial) if cache else (genfromtxt_serial_prepare, genfromtxt_serial)
+    if mode == 'tmpfile' or mode == 'serial':
+        funs = (genfromtxt_tmpfile_serial_prepare, genfromtxt_tmpfile_serial) \
+               if mode == 'tmpfile' else \
+               (genfromtxt_serial_prepare, genfromtxt_serial)
         handle = funs[0]( fname, byref(nrow), byref(ncol) )
         if nrow == -1 or ncol == -1 or handle is None:
             return None
         data = np.zeros( (nrow.value, ncol.value), dtype=np.float64 )
         funs[1]( handle, data.ctypes.data )
         return data
-    else:
-        buf = genfromtxt_buffered( fname, byref(nrow), byref(ncol), nthr )
+    elif mode == 'buffered' or mode == 'mmap':
+        fun = genfromtxt_buffered if mode == 'buffered' else genfromtxt_mmap
+        buf = fun( fname, byref(nrow), byref(ncol), nthr )
         shape = (nrow.value, ncol.value, np.float64().itemsize)
         ary = np.ctypeslib.as_array( cast(buf, POINTER(c_char)), shape=shape ).view( \
                 dtype=np.float64 ).reshape( shape[:-1] )
         weakref.finalize( ary, lambda buf: genfromtxt_buffered_free(buf), buf )
         return ary
+    else:
+        print( f"unsupported mode '{mode}' (tmpfile, serial, buffered, mmap)" )
+        return None
 
-def savetxt( fname, data, header=None, cache=False, nthr=-1 ):
+def savetxt( fname, data, header=None, cache=True, nthr=-1 ):
     if cache:
         savetxt_buffered(fname, data.ctypes.data, data.shape[0], data.shape[1], header, nthr)
     else:
