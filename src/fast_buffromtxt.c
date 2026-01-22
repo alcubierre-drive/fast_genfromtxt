@@ -77,7 +77,6 @@ double* fast_buffromtxt( const char* fname, int64_t* nrow, int64_t* ncol, int nt
     if (fd <= 0) goto cleanup;
 
     struct stat finfo = {0};
-    stat(fname, &finfo);
     fstat(fd, &finfo);
     fb.nbytes = finfo.st_size;
     fb.bytes = malloc(fb.nbytes+1);
