@@ -1,4 +1,4 @@
-CFLAGS := -Ofast -march=native -mtune=native -DNDEBUG -fPIC -fopenmp
+CFLAGS := -Ofast -march=native -mtune=native -DNDEBUG -fPIC -fopenmp -DSKIP_MAIN_COMPILATION
 CFLAGS += -Wall -Wextra -pedantic -std=c11
 SRC := genfromtxt_parallel.c genfromtxt_serial.c
 HEADERS := genfromtxt_parallel.h genfromtxt_serial.h vector.h double_conversion_wrap.h

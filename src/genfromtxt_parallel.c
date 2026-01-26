@@ -249,7 +249,7 @@ typedef struct {
     int has_number;
 } column_t;
 
-column_t get_column( char* restrict buffer, int64_t offset, int64_t size, char* restrict number ) {
+static inline column_t get_column( char* restrict buffer, int64_t offset, int64_t size, char* restrict number ) {
     column_t result = {.offset=offset, .line_continues=1, .buffer_continues=1, .has_number=0};
 
     while (isspace(buffer[result.offset]) && result.offset < size)
@@ -357,6 +357,8 @@ double* genfromtxt_mmap( const char* fname, int64_t* nrow, int64_t* ncol, int nt
         int64_t my_ncol = 0, my_nrow = 0, my_ncol_min = INT64_MAX, my_ncol_max = INT64_MIN;
         while (col.buffer_continues) {
             col = get_column(buf, offset, count[t], num);
+            // TODO debugging printf
+            // printf( "t%i: col'%s' -> (lc%i bc%i hn%i)\n", t, num, col.line_continues, col.buffer_continues, col.has_number );
             if (col.has_number) {
                 if (col.line_continues) {
                     my_ncol++;
@@ -374,6 +376,9 @@ double* genfromtxt_mmap( const char* fname, int64_t* nrow, int64_t* ncol, int nt
                 VECTOR_PUSH_BACK( results[t].v, dnum );
             } else if (my_ncol != 0) {
                 my_nrow++;
+                my_ncol--;
+                my_ncol_max = MAX(my_ncol_max,my_ncol);
+                my_ncol_min = MIN(my_ncol_min,my_ncol);
                 my_ncol = 0;
             }
             offset = col.offset;
@@ -455,7 +460,7 @@ void savetxt_buffered( const char* fname, const double* data, int64_t nrow,
     fclose(f);
 }
 
-/*
+#ifndef SKIP_MAIN_COMPILATION
 #include <time.h>
 static inline double wtime( void ) {
     struct timespec ts;
@@ -479,4 +484,4 @@ int main() {
     tock = wtime();
     printf( "map: %.2f (%li×%li)\n", tock-tick, nrow, ncol );
 }
-*/
+#endif // SKIP_MAIN_COMPILATION
