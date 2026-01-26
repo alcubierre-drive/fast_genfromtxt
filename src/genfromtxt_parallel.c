@@ -246,34 +246,32 @@ typedef struct {
     int64_t offset;
     int line_continues;
     int buffer_continues;
-    int is_comment;
     int has_number;
 } column_t;
 
 column_t get_column( char* restrict buffer, int64_t offset, int64_t size, char* restrict number ) {
-    column_t result = {.offset=offset, .line_continues=1, .buffer_continues=1,
-                       .is_comment=0, .has_number=0};
+    column_t result = {.offset=offset, .line_continues=1, .buffer_continues=1, .has_number=0};
 
     while (isspace(buffer[result.offset]) && result.offset < size)
         result.offset++;
 
     int nnumber = 0;
+    int iscomment = 0;
     while (!isspace(buffer[result.offset]) && result.offset < size) {
-        if (number[nnumber] == '#') {
-            nnumber++;
-            result.is_comment = 1;
+        if ((number[nnumber++] = buffer[result.offset++]) == '#') {
+            iscomment = 1;
+            nnumber--;
             break;
-        } else {
-            number[nnumber++] = buffer[result.offset++];
         }
     }
     result.has_number = (nnumber > 0);
     number[nnumber++] = '\0';
     assert( nnumber < 64 );
 
-    if (result.is_comment) {
+    if (iscomment) {
         while (buffer[result.offset] != '\n' && result.offset < size)
             result.offset++;
+        result.line_continues = 0;
     } else {
         while (isspace(buffer[result.offset]) && result.offset < size) {
             if (buffer[result.offset++] == '\n') {
@@ -283,6 +281,9 @@ column_t get_column( char* restrict buffer, int64_t offset, int64_t size, char* 
         }
     }
     result.buffer_continues = (result.offset < size);
+
+    printf( "parse '%s', lc=%i, bc=%i, hn=%i\n", number, result.line_continues,
+            result.buffer_continues, result.has_number );
 
     return result;
 }
@@ -315,6 +316,14 @@ double* genfromtxt_mmap( const char* fname, int64_t* nrow, int64_t* ncol, int nt
         goto mclean;
     }
     close(fd);
+
+    int nthr_prev = nthr;
+    while (nthr > 0) {
+        if (nbytes / nthr < 128) nthr--;
+        else break;
+    }
+    nthr = MAX(nthr, 0);
+    if (nthr < nthr_prev) fprintf( stderr, "limit nthr=%i (few bytes)\n", nthr );
 
     count = count_displ(nbytes, nthr);
     int64_t* displ = count+nthr;
@@ -351,7 +360,7 @@ double* genfromtxt_mmap( const char* fname, int64_t* nrow, int64_t* ncol, int nt
         int64_t my_ncol = 0, my_nrow = 0, my_ncol_min = INT64_MAX, my_ncol_max = INT64_MIN;
         while (col.buffer_continues) {
             col = get_column(buf, offset, count[t], num);
-            if (!col.is_comment && col.has_number) {
+            if (col.has_number) {
                 if (col.line_continues) {
                     my_ncol++;
                 } else {
@@ -366,6 +375,9 @@ double* genfromtxt_mmap( const char* fname, int64_t* nrow, int64_t* ncol, int nt
                 double dnum = atof(num);
                 #endif
                 VECTOR_PUSH_BACK( results[t].v, dnum );
+            } else if (my_ncol != 0) {
+                my_nrow++;
+                my_ncol = 0;
             }
             offset = col.offset;
         }
@@ -378,8 +390,8 @@ double* genfromtxt_mmap( const char* fname, int64_t* nrow, int64_t* ncol, int nt
         my_ncol = my_ncol_max + 1;
         if (my_ncol_min != my_ncol_max) {
             VECTOR_RESIZE( results[t].v, 0 );
-            fprintf( stderr, "error (thr#%i): #cols=%li..%li. skipping %li rows.\n",
-                         t, my_ncol_min, my_ncol_max, my_nrow );
+            if (my_nrow != 0) fprintf( stderr, "error (thr#%i): #cols=%li..%li. skipping %li rows.\n",
+                                       t, my_ncol_min, my_ncol_max, my_nrow );
             my_nrow = 0;
         }
 
@@ -446,6 +458,7 @@ void savetxt_buffered( const char* fname, const double* data, int64_t nrow,
     fclose(f);
 }
 
+/*
 #include <time.h>
 static inline double wtime( void ) {
     struct timespec ts;
@@ -469,3 +482,4 @@ int main() {
     tock = wtime();
     printf( "map: %.2f (%li×%li)\n", tock-tick, nrow, ncol );
 }
+*/
