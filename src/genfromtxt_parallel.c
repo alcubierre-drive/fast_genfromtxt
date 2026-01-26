@@ -282,9 +282,6 @@ column_t get_column( char* restrict buffer, int64_t offset, int64_t size, char* 
     }
     result.buffer_continues = (result.offset < size);
 
-    printf( "parse '%s', lc=%i, bc=%i, hn=%i\n", number, result.line_continues,
-            result.buffer_continues, result.has_number );
-
     return result;
 }
 
