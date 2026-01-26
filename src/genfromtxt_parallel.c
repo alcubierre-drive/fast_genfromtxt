@@ -419,7 +419,7 @@ double* genfromtxt_mmap( const char* fname, int64_t* nrow, int64_t* ncol, int nt
     *nrow = nrow_found;
     *ncol = result_sz / nrow_found;
 mclean:
-    if (bytes) munmap(bytes, nbytes);
+    if (bytes != MAP_FAILED && bytes) munmap(bytes, nbytes);
     free(count);
     free(results);
     return result; // should be NULL on error
@@ -449,7 +449,6 @@ double* genfromtxt_mmap_serial( const char* fname, int64_t* nrow, int64_t* ncol 
     #ifdef USE_DOUBLE_CONVERSION
     void* dchandle = dcwrap_init();
     #endif
-    char* buf = bytes;
     int64_t offset = 0;
     column_t col = {.buffer_continues=1};
     char num[64] = {0};
@@ -457,7 +456,7 @@ double* genfromtxt_mmap_serial( const char* fname, int64_t* nrow, int64_t* ncol 
 
     int64_t my_ncol = 0, my_nrow = 0, my_ncol_min = INT64_MAX, my_ncol_max = INT64_MIN;
     while (col.buffer_continues) {
-        col = get_column(buf, offset, nbytes, num);
+        col = get_column(bytes, offset, nbytes, num);
         if (col.has_number) {
             if (col.line_continues) {
                 my_ncol++;
@@ -498,7 +497,7 @@ double* genfromtxt_mmap_serial( const char* fname, int64_t* nrow, int64_t* ncol 
     *nrow = my_nrow;
     *ncol = result_sz / my_nrow;
 mclean:
-    if (bytes) munmap(bytes, nbytes);
+    if (bytes != MAP_FAILED && bytes) munmap(bytes, nbytes);
     return result; // should be NULL on error
 }
 
@@ -549,11 +548,25 @@ int main() {
     double* ary;
     double tick, tock;
 
+    FILE* rf = fopen( "RAND.dat", "w");
+    fprintf( rf, "# header\n" );
+    for (int i=0; i<10; ++i) {
+        for (int j=0; j<3; ++j) {
+            char endchar = ' ';
+            if (j == 2 && i != 2)
+                endchar = '\n';
+            fprintf( rf, "%.5e%c", (double)rand()/(double)RAND_MAX, endchar );
+            if (j == 2 && i == 2)
+                fprintf( rf, " # comment\n" );
+        }
+    }
+    fclose( rf );
+
     tick = wtime();
-    ary = genfromtxt_buffered( "RAND.dat", &nrow, &ncol, -1 );
+    ary = genfromtxt_mmap_serial( "RAND.dat", &nrow, &ncol );
     free( ary );
     tock = wtime();
-    printf( "buf: %.2f (%li×%li)\n", tock-tick, nrow, ncol );
+    printf( "ser: %.2f (%li×%li)\n", tock-tick, nrow, ncol );
 
     tick = wtime();
     ary = genfromtxt_mmap( "RAND.dat", &nrow, &ncol, -1 );
