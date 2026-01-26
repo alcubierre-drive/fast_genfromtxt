@@ -425,6 +425,83 @@ mclean:
     return result; // should be NULL on error
 }
 
+double* genfromtxt_mmap_serial( const char* fname, int64_t* nrow, int64_t* ncol ) {
+    // have this here to return it on error
+    *nrow = *ncol = -1;
+
+    int fd = open(fname, O_RDONLY);
+    char* bytes = NULL;
+    int64_t nbytes = 0;
+    VECTOR_DECL( double, result );
+    result = NULL; result_sz = result_cap = 0;
+
+    if (fd <= 0) goto mclean;
+
+    struct stat finfo = {0};
+    fstat(fd, &finfo);
+    nbytes = finfo.st_size;
+    if ((bytes = mmap(NULL, nbytes, PROT_READ, MAP_PRIVATE, fd, 0)) == MAP_FAILED) {
+        close(fd);
+        goto mclean;
+    }
+    close(fd);
+
+    #ifdef USE_DOUBLE_CONVERSION
+    void* dchandle = dcwrap_init();
+    #endif
+    char* buf = bytes;
+    int64_t offset = 0;
+    column_t col = {.buffer_continues=1};
+    char num[64] = {0};
+    VECTOR_RESERVE( result, nbytes/8 );
+
+    int64_t my_ncol = 0, my_nrow = 0, my_ncol_min = INT64_MAX, my_ncol_max = INT64_MIN;
+    while (col.buffer_continues) {
+        col = get_column(buf, offset, nbytes, num);
+        if (col.has_number) {
+            if (col.line_continues) {
+                my_ncol++;
+            } else {
+                my_ncol_max = MAX(my_ncol_max,my_ncol);
+                my_ncol_min = MIN(my_ncol_min,my_ncol);
+                my_ncol = 0;
+                my_nrow++;
+            }
+            #ifdef USE_DOUBLE_CONVERSION
+            double dnum = dcwrap_run( dchandle, num, sizeof num );
+            #else
+            double dnum = atof(num);
+            #endif
+            VECTOR_PUSH_BACK( result, dnum );
+        } else if (my_ncol != 0) {
+            my_nrow++;
+            my_ncol--;
+            my_ncol_max = MAX(my_ncol_max,my_ncol);
+            my_ncol_min = MIN(my_ncol_min,my_ncol);
+            my_ncol = 0;
+        }
+        offset = col.offset;
+    }
+    VECTOR_SHRINK_TO_FIT( result );
+
+    #ifdef USE_DOUBLE_CONVERSION
+    dcwrap_free(dchandle);
+    #endif
+
+    my_ncol = my_ncol_max + 1;
+    if (my_ncol_min != my_ncol_max) {
+        VECTOR_RESIZE( result, 0 );
+        if (my_nrow != 0) fprintf( stderr, "error: #cols=%li..%li. skipping %li rows.\n",
+                                   my_ncol_min, my_ncol_max, my_nrow );
+        my_nrow = 0;
+    }
+    *nrow = my_nrow;
+    *ncol = result_sz / my_nrow;
+mclean:
+    if (bytes) munmap(bytes, nbytes);
+    return result; // should be NULL on error
+}
+
 void savetxt_buffered( const char* fname, const double* data, int64_t nrow,
                        int64_t ncol, const char* header, int nthr ) {
     if (nthr <= 0) nthr = omp_get_max_threads();

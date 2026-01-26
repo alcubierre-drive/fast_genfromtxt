@@ -4,6 +4,7 @@
 
 double* genfromtxt_buffered( const char* fname, int64_t* nrow, int64_t* ncol, int nthr );
 double* genfromtxt_mmap( const char* fname, int64_t* nrow, int64_t* ncol, int nthr );
+double* genfromtxt_mmap_serial( const char* fname, int64_t* nrow, int64_t* ncol );
 void genfromtxt_buffered_free( void* ptr );
 
 void savetxt_buffered( const char* fname, const double* data, int64_t nrow,

@@ -904,6 +904,11 @@ if _libs["fast_genfromtxt"].has("genfromtxt_mmap", "cdecl"):
     genfromtxt_mmap.argtypes = [String, POINTER(c_int64), POINTER(c_int64), c_int]
     genfromtxt_mmap.restype = c_voidp
 
+if _libs["fast_genfromtxt"].has("genfromtxt_mmap_serial", "cdecl"):
+    genfromtxt_mmap_serial = _libs["fast_genfromtxt"].get("genfromtxt_mmap_serial", "cdecl")
+    genfromtxt_mmap_serial.argtypes = [String, POINTER(c_int64), POINTER(c_int64)]
+    genfromtxt_mmap_serial.restype = c_voidp
+
 if _libs["fast_genfromtxt"].has("genfromtxt_buffered_free", "cdecl"):
     genfromtxt_buffered_free = _libs["fast_genfromtxt"].get("genfromtxt_buffered_free", "cdecl")
     genfromtxt_buffered_free.argtypes = [c_voidp]
@@ -930,6 +935,13 @@ def genfromtxt( fname, mode='mmap', nthr=-1 ):
     elif mode == 'buffered' or mode == 'mmap':
         fun = genfromtxt_buffered if mode == 'buffered' else genfromtxt_mmap
         buf = fun( fname, byref(nrow), byref(ncol), nthr )
+        shape = (nrow.value, ncol.value, np.float64().itemsize)
+        ary = np.ctypeslib.as_array( cast(buf, POINTER(c_char)), shape=shape ).view( \
+                dtype=np.float64 ).reshape( shape[:-1] )
+        weakref.finalize( ary, lambda buf: genfromtxt_buffered_free(buf), buf )
+        return ary
+    elif mode == 'mmap_serial':
+        buf = genfromtxt_mmap_serial( fname, byref(nrow), byref(ncol) )
         shape = (nrow.value, ncol.value, np.float64().itemsize)
         ary = np.ctypeslib.as_array( cast(buf, POINTER(c_char)), shape=shape ).view( \
                 dtype=np.float64 ).reshape( shape[:-1] )
