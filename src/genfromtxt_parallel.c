@@ -319,7 +319,7 @@ double* genfromtxt_mmap( const char* fname, int64_t* nrow, int64_t* ncol, int nt
         if (nbytes / nthr < 128) nthr--;
         else break;
     }
-    nthr = MAX(nthr, 0);
+    nthr = MAX(nthr, 1);
     if (nthr < nthr_prev) fprintf( stderr, "limit nthr=%i (few bytes)\n", nthr );
 
     count = count_displ(nbytes, nthr);
