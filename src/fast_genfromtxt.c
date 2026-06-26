@@ -6,7 +6,6 @@
 #include <float.h>
 #include <string.h>
 #include <ctype.h>
-#include <assert.h>
 
 #include <omp.h>
 
@@ -79,6 +78,10 @@ void fast_genfromtxt_space_chars_reset( void ) {
     memcpy( space_bits, default_space_bits, sizeof(default_space_bits) );
 }
 
+#ifndef NNUMBER_MAX
+#define NNUMBER_MAX 64
+#endif
+
 static inline column_t get_column( char* restrict buffer, int64_t offset, int64_t size, char* restrict number ) {
     column_t result = {.offset=offset, .line_continues=1, .buffer_continues=1, .has_number=0};
 
@@ -88,15 +91,21 @@ static inline column_t get_column( char* restrict buffer, int64_t offset, int64_
     int nnumber = 0;
     int iscomment = 0;
     while (!isspace_custom(buffer[result.offset]) && result.offset < size) {
-        if ((number[nnumber++] = buffer[result.offset++]) == '#') {
+        char tmp = buffer[result.offset++];
+        number[nnumber++] = tmp;
+        if (nnumber >= NNUMBER_MAX)
+            break;
+        if (tmp == '#') {
             iscomment = 1;
             nnumber--;
             break;
         }
     }
     result.has_number = (nnumber > 0);
-    number[nnumber++] = '\0';
-    assert( nnumber < 64 );
+    if (nnumber==NNUMBER_MAX)
+        number[NNUMBER_MAX-1] = '\0';
+    else
+        number[nnumber++] = '\0';
 
     if (iscomment) {
         while (buffer[result.offset] != '\n' && result.offset < size)
@@ -181,7 +190,7 @@ double* fast_genfromtxt_mmap( const char* fname, int64_t* nrow, int64_t* ncol, i
         char* buf = bytes + displ[t];
         int64_t offset = 0;
         column_t col = {.buffer_continues=1};
-        char num[64] = {0};
+        char num[NNUMBER_MAX] = {0};
         ptrvec_reserve( results[t], nbytes/nthr/8 );
 
         int64_t my_ncol = 0, my_nrow = 0, my_ncol_min = INT64_MAX, my_ncol_max = INT64_MIN;
@@ -245,7 +254,10 @@ double* fast_genfromtxt_mmap( const char* fname, int64_t* nrow, int64_t* ncol, i
     }
 
     *nrow = nrow_found;
-    *ncol = result_sz / nrow_found;
+    if (nrow_found == 0)
+        *ncol = 0;
+    else
+        *ncol = result_sz / nrow_found;
 mclean:
     if (bytes != MAP_FAILED && bytes) munmap(bytes, nbytes);
     free(count);
@@ -279,7 +291,7 @@ double* fast_genfromtxt_mmap_serial( const char* fname, int64_t* nrow, int64_t* 
     #endif
     int64_t offset = 0;
     column_t col = {.buffer_continues=1};
-    char num[64] = {0};
+    char num[NNUMBER_MAX] = {0};
     ptrvec_reserve(tmp, nbytes/8);
 
     int64_t my_ncol = 0, my_nrow = 0, my_ncol_min = INT64_MAX, my_ncol_max = INT64_MIN;
@@ -317,16 +329,18 @@ double* fast_genfromtxt_mmap_serial( const char* fname, int64_t* nrow, int64_t* 
 
     my_ncol = my_ncol_max + 1;
     if (my_ncol_min != my_ncol_max) {
-        ptrvec_free(tmp);
         if (my_nrow != 0) fprintf(stderr, "error: #cols=%li..%li. skipping %li rows.\n",
                                   my_ncol_min, my_ncol_max, my_nrow);
         my_nrow = 0;
     }
     *nrow = my_nrow;
-    *ncol = ptrvec_sz(tmp)/my_nrow;
+    if (my_nrow == 0)
+        *ncol = 0;
+    else
+        *ncol = ptrvec_sz(tmp)/my_nrow;
 
     result = malloc((*nrow) * (*ncol) * sizeof*result);
-    memcpy(result, tmp, ptrvec_sz(tmp)*sizeof*tmp);
+    memcpy(result, tmp, (*nrow) * (*ncol) * sizeof*result);
     ptrvec_free(tmp);
 mclean:
     if (bytes != MAP_FAILED && bytes) munmap(bytes, nbytes);
