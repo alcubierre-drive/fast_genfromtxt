@@ -10,3 +10,6 @@ void fast_savetxt_buffered( const char* fname, const double* data, int64_t nrow,
                        int64_t ncol, const char* header, int nthr );
 void fast_savetxt_serial( const char* fname, const double* data, int64_t nrow,
                        int64_t ncol, const char* header );
+
+void fast_genfromtxt_register_space_char( unsigned char chr );
+void fast_genfromtxt_space_chars_reset( void );

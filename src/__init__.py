@@ -894,6 +894,16 @@ if _libs["fast_genfromtxt"].has("fast_savetxt_buffered", "cdecl"):
     fast_savetxt_buffered.argtypes = [String, c_voidp, c_int64, c_int64, String, c_int]
     fast_savetxt_buffered.restype = None
 
+if _libs["fast_genfromtxt"].has("fast_genfromtxt_register_space_char", "cdecl"):
+    fast_genfromtxt_register_space_char = _libs["fast_genfromtxt"].get("fast_genfromtxt_register_space_char", "cdecl")
+    fast_genfromtxt_register_space_char.argtypes = [c_char]
+    fast_genfromtxt_register_space_char.restype = None
+
+if _libs["fast_genfromtxt"].has("fast_genfromtxt_space_chars_reset", "cdecl"):
+    fast_genfromtxt_space_chars_reset = _libs["fast_genfromtxt"].get("fast_genfromtxt_space_chars_reset", "cdecl")
+    fast_genfromtxt_space_chars_reset.argtypes = []
+    fast_genfromtxt_space_chars_reset.restype = None
+
 def genfromtxt( fname, mode='parallel', nthr=-1 ):
     nrow = c_int64(0)
     ncol = c_int64(0)

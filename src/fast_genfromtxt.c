@@ -65,15 +65,29 @@ typedef struct {
     int has_number;
 } column_t;
 
+static uint64_t space_bits[4] = {4294983168,0,0,0};
+static inline uint64_t isspace_custom( unsigned char chr ) {
+    return space_bits[chr/64] & (1ULL<<(chr%64));
+}
+
+void fast_genfromtxt_register_space_char( unsigned char chr ) {
+    space_bits[chr/64] |= (1ULL<<(chr%64));
+}
+
+void fast_genfromtxt_space_chars_reset( void ) {
+    uint64_t default_space_bits[4] = {4294983168,0,0,0};
+    memcpy( space_bits, default_space_bits, sizeof(default_space_bits) );
+}
+
 static inline column_t get_column( char* restrict buffer, int64_t offset, int64_t size, char* restrict number ) {
     column_t result = {.offset=offset, .line_continues=1, .buffer_continues=1, .has_number=0};
 
-    while (isspace(buffer[result.offset]) && result.offset < size)
+    while (isspace_custom(buffer[result.offset]) && result.offset < size)
         result.offset++;
 
     int nnumber = 0;
     int iscomment = 0;
-    while (!isspace(buffer[result.offset]) && result.offset < size) {
+    while (!isspace_custom(buffer[result.offset]) && result.offset < size) {
         if ((number[nnumber++] = buffer[result.offset++]) == '#') {
             iscomment = 1;
             nnumber--;
@@ -89,7 +103,7 @@ static inline column_t get_column( char* restrict buffer, int64_t offset, int64_
             result.offset++;
         result.line_continues = 0;
     } else {
-        while (isspace(buffer[result.offset]) && result.offset < size) {
+        while (isspace_custom(buffer[result.offset]) && result.offset < size) {
             if (buffer[result.offset++] == '\n') {
                 result.line_continues = 0;
                 break;
