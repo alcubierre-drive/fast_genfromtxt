@@ -1,7 +1,7 @@
 CFLAGS := -Ofast -march=native -mtune=native -DNDEBUG -fPIC -fopenmp -DSKIP_MAIN_COMPILATION
 CFLAGS += -Wall -Wextra -pedantic -std=c11
-SRC := genfromtxt_parallel.c genfromtxt_serial.c
-HEADERS := genfromtxt_parallel.h genfromtxt_serial.h vector.h double_conversion_wrap.h
+SRC := fast_genfromtxt.c
+HEADERS := fast_genfromtxt.h double_conversion_wrap.h
 
 SRC_CXX := double_conversion_wrap.cpp
 # OBJ_CXX := double_conversion_wrap.cpp.o
@@ -15,3 +15,6 @@ libfast_genfromtxt.so: $(SRC) $(OBJ_CXX) $(HEADERS) Makefile Makefile.local
 
 %.cpp.o: %.cpp %.h Makefile Makefile.local
 	g++ -c $< -o $@ $(CXXFLAGS)
+
+clean:
+	-@rm -f *.o *.so
