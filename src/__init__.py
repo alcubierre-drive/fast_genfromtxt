@@ -884,6 +884,11 @@ if _libs["fast_genfromtxt"].has("fast_genfromtxt_mmap_serial", "cdecl"):
     fast_genfromtxt_mmap_serial.argtypes = [String, POINTER(c_int64), POINTER(c_int64)]
     fast_genfromtxt_mmap_serial.restype = c_voidp
 
+if _libs["fast_genfromtxt"].has("fast_genfromtxt_free", "cdecl"):
+    fast_genfromtxt_free = _libs["fast_genfromtxt"].get("fast_genfromtxt_free", "cdecl")
+    fast_genfromtxt_free.argtypes = c_voidp
+    fast_genfromtxt_free.restype = None
+
 if _libs["fast_genfromtxt"].has("fast_savetxt_buffered", "cdecl"):
     fast_savetxt_buffered = _libs["fast_genfromtxt"].get("fast_savetxt_buffered", "cdecl")
     fast_savetxt_buffered.argtypes = [String, c_voidp, c_int64, c_int64, String, c_int]
@@ -897,7 +902,7 @@ def genfromtxt( fname, mode='parallel', nthr=-1 ):
         shape = (nrow.value, ncol.value, np.float64().itemsize)
         ary = np.ctypeslib.as_array( cast(buf, POINTER(c_char)), shape=shape ).view( \
                 dtype=np.float64 ).reshape( shape[:-1] )
-        weakref.finalize( ary, lambda buf: genfromtxt_buffered_free(buf), buf )
+        weakref.finalize( ary, lambda buf: fast_genfromtxt_free(buf), buf )
         return ary
     else: # serial
         if mode != 'serial':
@@ -906,7 +911,7 @@ def genfromtxt( fname, mode='parallel', nthr=-1 ):
         shape = (nrow.value, ncol.value, np.float64().itemsize)
         ary = np.ctypeslib.as_array( cast(buf, POINTER(c_char)), shape=shape ).view( \
                 dtype=np.float64 ).reshape( shape[:-1] )
-        weakref.finalize( ary, lambda buf: genfromtxt_buffered_free(buf), buf )
+        weakref.finalize( ary, lambda buf: fast_genfromtxt_free(buf), buf )
         return ary
 
 def savetxt( fname, data, header=None, cache=True, nthr=-1 ):

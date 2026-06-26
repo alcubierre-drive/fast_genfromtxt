@@ -319,6 +319,8 @@ mclean:
     return result; // should be NULL on error
 }
 
+void fast_genfromtxt_free( double* fg_buf ) { free(fg_buf); }
+
 void fast_savetxt_buffered( const char* fname, const double* data, int64_t nrow,
                        int64_t ncol, const char* header, int nthr ) {
     if (nthr <= 0) nthr = omp_get_max_threads();
