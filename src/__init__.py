@@ -886,7 +886,7 @@ if _libs["fast_genfromtxt"].has("fast_genfromtxt_mmap_serial", "cdecl"):
 
 if _libs["fast_genfromtxt"].has("fast_genfromtxt_free", "cdecl"):
     fast_genfromtxt_free = _libs["fast_genfromtxt"].get("fast_genfromtxt_free", "cdecl")
-    fast_genfromtxt_free.argtypes = c_voidp
+    fast_genfromtxt_free.argtypes = [c_voidp]
     fast_genfromtxt_free.restype = None
 
 if _libs["fast_genfromtxt"].has("fast_savetxt_buffered", "cdecl"):
