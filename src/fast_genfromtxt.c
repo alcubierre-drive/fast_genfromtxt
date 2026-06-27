@@ -73,7 +73,11 @@ void fast_genfromtxt_register_space_char( unsigned char chr ) {
     space_bits[chr/64] |= (1ULL<<(chr%64));
 }
 
-void fast_genfromtxt_space_chars_reset( void ) {
+void fast_genfromtxt_unregister_space_char( unsigned char chr ) {
+    space_bits[chr/64] &= ~(1ULL<<(chr%64));
+}
+
+void fast_genfromtxt_reset_space_chars( void ) {
     uint64_t default_space_bits[4] = {4294983168,0,0,0};
     memcpy( space_bits, default_space_bits, sizeof(default_space_bits) );
 }
