@@ -6,6 +6,9 @@
 #include <float.h>
 #include <string.h>
 #include <ctype.h>
+#include <math.h>
+#include <stdint.h>
+#include <assert.h>
 
 #include <omp.h>
 
@@ -351,6 +354,67 @@ mclean:
     return result; // should be NULL on error
 }
 
+static inline void fast_dtoa_20p12e(double x, char* out) {
+    // does not add space or NULL terminator, but makes sure 20 characters are written.
+    char buf[32] = {0};
+    char* p = buf;
+
+    if (x < 0) {
+        *p++ = '-';
+        x = -x;
+    }
+    int exp10 = (int)floor(log10(x));
+    double m = x / pow(10.0, exp10);
+    if (m >= 10.0) {
+        m *= 0.1;
+        exp10++;
+    }
+    if (m < 1.0) {
+        m *= 10.0;
+        exp10--;
+    }
+    uint64_t digits = (uint64_t)(m * 1e12 + .5);
+
+    *p++ = '0' + (digits / 1000000000000ULL);
+    *p++ = '.';
+
+    uint64_t frac = digits % 1000000000000ULL;
+    uint64_t div  = 100000000000ULL;
+
+    for (int i = 0; i < 12; i++) {
+        *p++ = '0' + (frac / div);
+        frac %= div;
+        div /= 10;
+    }
+
+    *p++ = 'e';
+    *p++ = (exp10 < 0) ? '-' : '+';
+
+    if (exp10 < 0) exp10 = -exp10;
+
+    if (exp10 < 10) {
+        *p++ = '0';
+        *p++ = '0' + exp10;
+    } else if (exp10 < 100) {
+        *p++ = '0' + exp10 / 10;
+        *p++ = '0' + exp10 % 10;
+    } else {
+        *p++ = '0' + exp10 / 100;
+        *p++ = '0' + (exp10 / 10) % 10;
+        *p++ = '0' + exp10 % 10;
+    }
+    *p = 0;
+
+    int len = p - buf;
+    int width = 20;
+    int pad = width - len;
+
+    while (pad-- > 0) *out++ = ' ';
+
+    for (char *q = buf; q < p; q++)
+        *out++ = *q;
+}
+
 void fast_genfromtxt_free( double* fg_buf ) { free(fg_buf); }
 
 void fast_savetxt_buffered( const char* fname, const double* data, int64_t nrow,
@@ -363,7 +427,7 @@ void fast_savetxt_buffered( const char* fname, const double* data, int64_t nrow,
     int64_t* count = count_displ(nrow, nthr);
     int64_t* displ = count + nthr;
 
-    int64_t bufsz = 20 * nrow * ncol;
+    int64_t bufsz = 21 * nrow * ncol;
     char* buf = malloc( bufsz+1 );
     if (!buf) { free(count); fclose(f); return; }
 
@@ -371,19 +435,22 @@ void fast_savetxt_buffered( const char* fname, const double* data, int64_t nrow,
     for (int t=0; t<nthr; ++t) {
         for (int64_t i=0; i<count[t]; ++i) {
             int64_t r = displ[t]+i;
-            char* colbuf = buf + 20*r*ncol;
+            char* colbuf = buf + 21*r*ncol;
             for (int64_t c=0; c<ncol; ++c) {
-                char tmp[32] = {0};
-                sprintf( tmp, "%19.12e ", data[r*ncol+c] );
-                memcpy( colbuf, tmp, 20 );
-                colbuf += 20;
+                // sprintf(colbuf, "%20.12e", data[r*ncol+c]);
+                fast_dtoa_20p12e(data[r*ncol+c], colbuf);
+                colbuf[20] = ' ';
+                colbuf += 21;
             }
             colbuf[-1] = '\n';
         }
     }
     free(count);
-    if (header) fprintf(f, "%s\n", header);
-    fwrite(buf, 20, nrow*ncol, f);
+    if (header) {
+        fputs(header, f);
+        fputc('\n', f);
+    }
+    fwrite(buf, 21, nrow*ncol, f);
     free(buf);
     fclose(f);
 }
@@ -393,13 +460,16 @@ void fast_savetxt_serial( const char* fname, const double* data, int64_t nrow,
     FILE* f = fopen(fname, "w");
     if (!f) return;
 
-    if (header)
-        fprintf(f, "%s\n", header);
+    if (header) fprintf(f, "%s\n", header);
 
     int64_t idx = 0;
     for (int64_t r=0; r<nrow; ++r)
-    for (int64_t c=0; c<ncol; ++c)
-        fprintf(f, "%.11e%c", data[idx++], c==(ncol-1) ? '\n' : ' ');
+    for (int64_t c=0; c<ncol; ++c) {
+        char str[21] = {0};
+        fast_dtoa_20p12e(data[idx++], str);
+        fputs(str, f);
+        fputc(c==(ncol-1) ? '\n' : ' ', f);
+    }
 
     fclose(f);
 }

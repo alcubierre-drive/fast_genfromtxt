@@ -1,4 +1,4 @@
-CFLAGS := -Ofast -march=native -mtune=native -DNDEBUG \
+CFLAGS := -Ofast -march=native -mtune=native \
 	  -fPIC -fopenmp -DSKIP_MAIN_COMPILATION
 CFLAGS += -Wall -Wextra -pedantic -std=c11
 SRC := fast_genfromtxt.c
@@ -12,7 +12,7 @@ CXXFLAGS += -Wall -Wextra -pedantic -std=c++17
 -include Makefile.local
 
 libfast_genfromtxt.so: $(SRC) $(OBJ_CXX) $(HEADERS) Makefile Makefile.local
-	gcc $(OBJ_CXX) $(SRC) -shared $(CFLAGS) -o libfast_genfromtxt.so $(LDFLAGS)
+	gcc $(OBJ_CXX) $(SRC) -shared $(CFLAGS) -lm -o libfast_genfromtxt.so $(LDFLAGS)
 
 %.cpp.o: %.cpp %.h Makefile Makefile.local
 	g++ -c $< -o $@ $(CXXFLAGS)
